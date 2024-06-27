@@ -325,3 +325,4 @@ let tabs (tabs : (string * (unit -> Ui.t Lwd.t)) list) : Ui.t Lwd.t =
     in
     f () >|= Ui.join_y tab_bar
 ;;
+

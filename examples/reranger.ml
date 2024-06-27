@@ -1,4 +1,5 @@
 open Nottui
+open! Lwd_infix
 
 
 let is_double_click =
@@ -18,7 +19,7 @@ let is_double_click =
 
 let remember_width ~wref ui =
   wref := max (Ui.layout_spec ui).Ui.w !wref;
-  Ui.resize ~w:!wref ui
+  Ui.resize ~w:!wref  ui
 
 let rec dir ?(initial_path = []) ?after_width:(wref = ref 0) path =
   let column = Lwd.var (Lwd.return Ui.empty) in
@@ -27,12 +28,13 @@ let rec dir ?(initial_path = []) ?after_width:(wref = ref 0) path =
   let directories = Lwd_table.make () in
   let files = Lwd_table.make () in
   let body =
-    W.Scroll.area
-      (Lwd_utils.pack Ui.pack_y
+
+      (W.vbox
          [
            Lwd_table.reduce Ui.pack_y directories;
            Lwd_table.reduce Ui.pack_y files;
          ])
+         |>W.Scroll.v_area
   in
   let rec set_constrain constrain =
     let header =
@@ -44,9 +46,9 @@ let rec dir ?(initial_path = []) ?after_width:(wref = ref 0) path =
               `Handled | _ -> `Unhandled)
         header
     in
-    let t = Lwd_utils.pack Ui.pack_y [ Lwd.return header; body ] in
+    let t = W.vbox [ Lwd.return header; body ] in
     let t =
-      if constrain then Lwd.map ~f:(Ui.resize ~w:12) t
+      if constrain then Lwd.map ~f:(Ui.resize ~w:12 ) t
       else Lwd.map ~f:(remember_width ~wref) t
     in
     Lwd.set column (Lwd_utils.pack Ui.pack_x [ t; Lwd.join (Lwd.get after) ])
@@ -131,7 +133,7 @@ let () =
   in
   let body = Lwd.var (Lwd.pure Ui.empty) in
   let wm = W.Old.window_manager (Lwd.join (Lwd.get body)) in
-  let ui = Lwd_utils.pack Ui.pack_y [
+  let ui = W.vbox [
       W.Old.main_menu_item wm "Quit" (fun () -> exit 0);
       dir ~initial_path "/"
     ]

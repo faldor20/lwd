@@ -352,6 +352,9 @@ struct
 
   let resize_to ({w; h; sw; sh;mw;mh} : layout_spec) ?pad ?crop ?(bg=A.empty) t : t =
     let g = prepare_gravity (pad, crop) in
+    let mw= if w>mw then w else mw 
+    and mh= if h>mh then h else mh
+    in
     {t with w; h; sw; sh; mw; mh; desc = Resize (t, g, bg)}
 
   let event_filter ?focus f t : t =
@@ -480,7 +483,8 @@ struct
     let flex = total - a - b in
     (*if we have a stretch value and space to stretch into*)
     let canStretch=stretch > 0 && flex > 0 in
-    if  canStretch then
+
+    if canStretch then
       let ratio =
         if sa > sb then
           flex * sa / stretch
@@ -494,19 +498,22 @@ struct
       2. stretch b give the leftover to a
       3. check if a is overstretched
       *)
-      let aRatio,bRatio= ref (a+ratio), ref (b+(flex-ratio)) in
+      let aRatio,bRatio= ref (a+ratio), ref (b+flex-ratio) in
+
       let aMaxed =ref false in
       if !aRatio>aMax then 
-      (
-      bRatio:=!bRatio+(!aRatio-aMax); 
-      aRatio:=aMax ;
-      aMaxed:=true);
+        (
+        bRatio:=!bRatio+(!aRatio-aMax); 
+        aRatio:=aMax ;
+        aMaxed:=true
+        );
      if (!bRatio)>bMax  then
      begin
        if !aMaxed then
          bRatio:=bMax
        else
         aRatio:=!aRatio+(!bRatio-bMax);
+        bRatio:=bMax;
         end;
       if !aRatio>aMax then 
         aRatio:=aMax ;
@@ -515,6 +522,53 @@ struct
 
     else
       (a, b)
+  let og_split ~a ~sa ~b ~sb total =
+    let stretch = sa + sb in
+    let flex = total - a - b in
+    if stretch > 0 && flex > 0 then
+      let ratio =
+        if sa > sb then
+          flex * sa / stretch
+        else
+          flex - flex * sb / stretch
+      in
+      (a + ratio, b + flex - ratio)
+    else
+      (a, b)
+let generate_test_case () =
+  let a = Random.int 100  in
+  let sa = Random.int 20  in
+  let b = Random.int 100  in
+  let sb = Random.int 20  in
+  let ma = Random.int 300  in
+  let mb = Random.int 300   in
+  let total = Random.int 100 in
+  (a, sa, b, sb, total,ma,mb)
+
+let%test "test_split" =
+  let num_tests = 100000000 in
+  let rec aux n =
+    if n = 0 then true
+    else
+      let (a, sa, b, sb, total,mA,mB) = generate_test_case () in
+      let mA=if a> mA then a else mA in
+      let mB=if b> mB then b else mB in
+      let a_ratio, b_ratio = split ~mA ~mB ~a ~sa ~b ~sb total in
+      let og_a_ratio, og_b_ratio = og_split ~a ~sa ~b ~sb total in
+      if  a_ratio+b_ratio<= og_a_ratio+og_b_ratio && 
+        (* shouldn't be able to be smaller than a+b*)
+        (a_ratio+b_ratio >= a+b)
+         then
+        aux (n - 1)
+      else
+        failwith (
+          Printf.sprintf "failed with inputs a:%d sa:%d b:%d sb:%d total:%d mA:%d mB:%d\n" a sa b sb total mA mB
+          ^ Printf.sprintf "got a_ratio:%d b_ratio:%d\n" a_ratio b_ratio
+          ^ Printf.sprintf "expected a_ratio:%d b_ratio:%d\n" og_a_ratio og_b_ratio)
+        
+  in
+  aux num_tests
+
 
   let pack ~max ~fixed ~stretch total g1 g2 =
     (*flex is the space we should expand into if we stretch*)
@@ -522,8 +576,8 @@ struct
     if stretch > 0 && flex >= 0 && max >total then
       (0, total)
     else
-    (* If we can stretch and we got here we must have wanted to stretch beyond the max which means we should stretch to max and recalculate the flex*)
-      let (fixed,flex)=if stretch > 0 then (max,total-max) else (fixed,flex) in
+    (* If we can stretch and we have space to expand into and we got here we must have wanted to stretch beyond the max which means we should stretch to max and recalculate the flex*)
+      let (fixed,flex)=if stretch > 0 && total >= max then (max,total-max) else (fixed,flex) in
 
       let gravity = if flex >= 0 then g1 else g2 in
 
@@ -591,7 +645,7 @@ struct
     t.size <- size;
     t.view <- ui;
     (* TODO:I think i need to do something here*)
-    update_sensors 0 0 (fst size) (snd size) 10000 10000  ui;
+    update_sensors 0 0 (fst size) (snd size)  (fst size) (snd size)ui;
     update_focus ui
 
   let dispatch_mouse st x y btn w h t =

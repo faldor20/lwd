@@ -41,9 +41,10 @@ let vscroll_area_intern ~state ~change t =
     | _ -> `Unhandled
   in
   Lwd.map2 t state ~f:(fun t state ->
+    let tmh = Ui.layout_max_height t in
     t
     |> Ui.shift_area 0 state.position
-    |> Ui.resize ~h:0 ~sh:1
+    |> Ui.resize ~h:0 ~sh:1 ~mh:10000
     |> Ui.size_sensor (fun ~w:_ ~h ->
       let tchange =
         if !total <> (Ui.layout_spec t).Ui.h
@@ -69,7 +70,10 @@ let vscroll_area_intern ~state ~change t =
           ; bound = maxi 0 (!total - !visible)
           })
     |> Ui.mouse_area (scroll_handler state)
-    |> Ui.keyboard_area (focus_handler state))
+    |> Ui.keyboard_area (focus_handler state)
+    (*restore original max height*)
+    |>Ui.resize  ~mh:tmh
+    )
 ;;
 
 let scroll_area_intern ?focus ~state ~change t =
@@ -124,9 +128,10 @@ let scroll_area_intern ?focus ~state ~change t =
   in
   Lwd.map2 t state ~f:(fun t (state_w, state_h) ->
     let tw, th = Ui.layout_width t, Ui.layout_height t in
+    let tmw, tmh = Ui.layout_max_width t, Ui.layout_max_height t in
     (* let mw, mh = if max then Some tw, Some th else None, None in *)
     t
-    |> Ui.resize ~w:0 ~sw:1 ~h:0 ~sh:1
+    |> Ui.resize ~w:0 ~sw:1 ~h:0 ~sh:1 ~mw:10000 ~mh:10000
     |> Ui.shift_area state_w.position state_h.position
     (* |>Ui.join_y (Ui.atom (I.string A.empty (string_of_int state_w.visible))) *)
     (*TODO: make an alternative that has this already set*)
@@ -169,9 +174,13 @@ let scroll_area_intern ?focus ~state ~change t =
       | None, None ->
         ())
     |> Ui.mouse_area (scroll_handler state_w state_h)
-    |> Ui.keyboard_area ?focus (focus_handler state_w state_h))
+    |> Ui.keyboard_area ?focus (focus_handler state_w state_h)
+    (*restore original mw*)
+    |>Ui.resize ~mw:tmw ~mh:tmh
+    )
 ;;
 end
+open Internal
 
 (** A keyboard scroll area that only scrolls in the vertical direction *)
 let v_area ui =
@@ -184,4 +193,36 @@ let area ?focus ui =
   let state = Lwd.var (Internal.default_scroll_state, Internal.default_scroll_state) in
   ui |> Internal.scroll_area_intern ?focus ~change:(fun _ x -> state $= x) ~state:(Lwd.get state)
 ;;
+
+(** A scroll area that allows keyboard scrolling in both x and y directions and has no limits.
+This might be useful if you have some very dynamic content and the usual scroll area doesn't know how big things are*)
+let infinite_area ?(offset=0,0) t =
+  let offset = Lwd.var offset in
+  let scroll d_x d_y =
+    let s_x, s_y = Lwd.peek offset in
+    let s_x = maxi 0 (s_x + d_x) in
+    let s_y = maxi 0 (s_y + d_y) in
+    Lwd.set offset (s_x, s_y);
+    `Handled
+  in
+  let focus_handler = function
+    | `Arrow `Left , [] -> scroll (-scroll_step) 0
+    | `Arrow `Right, [] -> scroll (+scroll_step) 0
+    | `Arrow `Up   , [] -> scroll 0 (-scroll_step)
+    | `Arrow `Down , [] -> scroll 0 (+scroll_step)
+    | `Page `Up, [] -> scroll 0 ((-scroll_step) * 8)
+    | `Page `Down, [] -> scroll 0 ((+scroll_step) * 8)
+    | _ -> `Unhandled
+  in
+  let scroll_handler ~x:_ ~y:_ = function
+    | `Scroll `Up   -> scroll 0 (-scroll_step)
+    | `Scroll `Down -> scroll 0 (+scroll_step)
+    | _ -> `Unhandled
+  in
+  Lwd.map2 t (Lwd.get offset) ~f:begin fun t (s_x, s_y) ->
+    t
+    |> Ui.shift_area s_x s_y
+    |> Ui.mouse_area scroll_handler
+    |> Ui.keyboard_area focus_handler
+  end
 
