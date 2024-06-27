@@ -25,6 +25,7 @@ type 'a t_ =
       mutable trace_idx : trace_idx; (* list of direct children that can invalidate this *)
       mutable on_invalidate : 'a -> unit;
       mutable acquired : bool;
+      post_eval_updates: (unit->unit) list ref;
       child : 'a t_;
     } -> 'a t_
 
@@ -203,7 +204,7 @@ let get_idx obj = function
 type status =
   | Neutral
   | Safe
-  | Unsafe
+  | Unsafe of (unit->unit) list ref
 
 type sensitivity =
   | Strong
@@ -213,35 +214,31 @@ type sensitivity =
    Each document is invalidated at most once,
    and only if it has [t.value = Some _]. *)
 let rec invalidate_node : type a . status ref -> sensitivity -> a t_ -> unit =
+  (*sensitivity indicates that a parent is being evaluated*)
   fun status sensitivity node ->
   match node, sensitivity with
   | Pure _, _ -> assert false
   | Root ({value; _} as t), _ ->
     t.value <- Eval_none;
-    begin match value with
-      | Eval_none -> ()
-      | Eval_progress ->
-        status := Unsafe
-      | Eval_some x ->
-        begin match sensitivity with
-          | Strong -> ()
-          | Fragile -> status := Unsafe
-        end;
-        t.on_invalidate x (* user callback that {i observes} this root. *)
-    end
-  | Operator {value = Eval_none; _}, Fragile ->
-    begin match !status with
-      | Unsafe | Safe -> ()
-      | _ -> status := Safe
-    end
-  | Operator {value = Eval_none; _}, _ -> ()
-  | Operator {desc = Fix {wrt = Operator {value = Eval_none; _}; _}; _}, Fragile ->
-    begin match !status with
-      | Safe | Unsafe -> ()
-      | Neutral -> status := Safe
-    end
-  | Operator {desc = Fix {wrt = Operator {value = Eval_some _; _}; _}; _}, Fragile ->
-    ()
+    (match value with
+     | Eval_none -> ()
+     | Eval_progress -> status := Unsafe t.post_eval_updates
+     | Eval_some x ->
+       (match sensitivity with
+        | Strong -> ()
+        | Fragile -> status := Unsafe t.post_eval_updates);
+       t.on_invalidate x (* user callback that {i observes} this root. *))
+  | Operator { value = Eval_none; _ }, Fragile ->
+    (match !status with
+     | Unsafe _ | Safe -> ()
+     | _ -> status := Safe)
+  | Operator { value = Eval_none; _ }, _ -> ()
+  | Operator { desc = Fix { wrt = Operator { value = Eval_none; _ }; _ }; _ }, Fragile ->
+    (match !status with
+     | Safe | Unsafe _ -> ()
+     | Neutral -> status := Safe)
+  | Operator { desc = Fix { wrt = Operator { value = Eval_some _; _ }; _ }; _ }, Fragile
+    -> ()
   | Operator t, _ ->
     let sensitivity =
       match t.value with Eval_progress -> Fragile | _ -> sensitivity
@@ -281,13 +278,22 @@ let default_unsafe_mutation_logger () =
 
 let unsafe_mutation_logger = ref default_unsafe_mutation_logger
 
-let do_invalidate sensitivity node =
+(**
+  @param ~was_delayed: set to true if the function call was put on hold untill the current root had finished being evaluated
+*)
+let do_invalidate ?(post_eval=(fun ~was_delayed:_-> ())) sensitivity (node : 'a t_)  =
   let status = ref Neutral in
-  invalidate_node status sensitivity node;
+  invalidate_node status sensitivity node  ;
   let unsafe =
     match !status with
-    | Neutral | Safe -> false
-    | Unsafe -> true
+    | Neutral | Safe ->
+      (* we are safe to run our state change*)
+      post_eval ~was_delayed:false;
+      false
+    | Unsafe root ->
+     (*queue our state change to run at then end of eval because we are currently evaluating and shouldn't change any state right now*)
+      root:= (fun ()->post_eval ~was_delayed:true)::(!root);
+      false
   in
   if unsafe then !unsafe_mutation_logger ()
 
@@ -300,8 +306,12 @@ let set (vx:_ var) x : unit =
   match vx with
   | Operator ({desc = Var v; _}) ->
     (* set the variable, and invalidate all observers *)
-    v.binding <- x;
-    do_invalidate Strong vx
+    do_invalidate ~post_eval:(fun ~was_delayed->
+    (* TODO this evals twice when everything is okay*)
+        v.binding <- x;
+        if was_delayed then
+        do_invalidate Strong vx;
+    )  Strong vx
   | _ -> assert false
 
 let peek = function
@@ -621,14 +631,18 @@ let sub_sample queue =
 
 type 'a root = 'a t
 
-let observe ?(on_invalidate=ignore) child : _ root =
-  let root = Root {
-      child = prj child;
-      value = Eval_none;
-      on_invalidate;
-      trace_idx = I0;
-      acquired = false;
-    } in
+let observe ?(on_invalidate = ignore) child : _ root =
+  let root =
+    Root
+      { child = prj child
+      ; value = Eval_none
+      ; on_invalidate
+      ; trace_idx = I0
+      ; acquired = false
+      ; post_eval_updates=ref []
+
+      }
+  in
   inj root
 
 exception Release_failure of exn option * release_failure list
@@ -653,6 +667,7 @@ let sample queue x = match prj x with
     match t.value with
     | Eval_some value -> value
     | _ ->
+    (
       (* no cached value, compute it now *)
       if not t.acquired then (
         t.acquired <- true;
@@ -664,9 +679,16 @@ let sample queue x = match prj x with
         | Eval_progress -> t.value <- Eval_some value; (* cache value *)
         | Eval_none | Eval_some _ -> ()
       end;
-      value
 
-let is_damaged x = match prj x with
+    (* Run any Lwd.var updates that requested during the eval*)
+    !(t.post_eval_updates)|>List.iter (fun x->x());
+    t.post_eval_updates:=[];
+
+    value
+    )
+
+let is_damaged x =
+  match prj x with
   | Pure _ | Operator _ -> assert false
   | Root {value = Eval_some _; _} -> false
   | Root {value = Eval_none | Eval_progress; _} -> true
