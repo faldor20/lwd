@@ -4,7 +4,7 @@
  (name nottui)
  (public_name nottui)
  (wrapped true)
- (libraries lwd notty notty.unix)
+ (libraries bonsai notty notty.unix)
  (inline_tests)
  (preprocess
-  (pps ppx_inline_test ppx_assert)))
+  (pps ppx_inline_test ppx_assert bonsai.ppx_bonsai ppx_jane  )))

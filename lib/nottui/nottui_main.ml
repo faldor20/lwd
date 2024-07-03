@@ -1,9 +1,9 @@
 open Notty
-open Lwd_utils
+open Bonsai
 
 module Focus :
 sig
-  type var = int Lwd.var
+  type var = int Bonsai.Computation.t
   type handle
   val make : unit -> handle
   val request : handle -> unit
@@ -23,14 +23,14 @@ sig
 
   val empty : status
   (*val is_empty : status -> bool*)
-  val status : handle -> status Lwd.t
+  val status : handle -> status Bonsai.Computation.t
   val has_focus : status -> bool
   val merge : status -> status -> status
 end = struct
   (*The focus system works by having a clock which changes each time the focus changes. An item has focus so long as its `var` is greater than 0
   When we render the UI we go through and set anything with a focus value not matching that of the clock to 0  *)
 
-  type var = int Lwd.var
+  type var = int Bonsai.Computation.t
 
   type status =
     | Empty
@@ -40,9 +40,10 @@ end = struct
   type handle = var * status Lwd.t
 
   let make ():handle =
-    let v = Lwd.var 0 in
+
+    let%arr (v,v_set) = Bonsai.state 0 in
     (v,
-    (Lwd.get v)|> Lwd.map ~f:(fun i -> Handle (i, v)) 
+    ( v)|> Bonsa ~f:(fun i -> Handle (i, v)) 
      )
 
   let empty : status = Empty
