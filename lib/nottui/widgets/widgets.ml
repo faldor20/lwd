@@ -1,4 +1,4 @@
-open Notty
+(*open Notty
 open Nottui_main
 open Lwd_infix
 include Shared
@@ -67,3 +67,5 @@ let keyboard_tabs (tabs : (string * (unit -> Ui.t Lwd.t)) list) : Ui.t Lwd.t =
                 |> Option.value ~default:`Unhandled
             | _ ->
                 `Unhandled )
+        *)
+

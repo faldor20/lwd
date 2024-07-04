@@ -1,5 +1,7 @@
 open Notty
 
+module Bonsai=Bonsai.Cont
+
 (**
    Nottui augments Notty with primitives for laying out user interfaces (in the
    terminal) and reacting to input events.
@@ -34,7 +36,7 @@ sig
   val empty : status
   (** A status that has no focus and no conflicts *)
 
-  val status : handle -> status Lwd.t
+  val status : handle -> status Bonsai.t
   (** Get the status of a focus [handle]. The [status] is a reactive value:
       it will evolve over time, as focus is received or lost. *)
 
@@ -214,7 +216,7 @@ sig
   val mouse_area : mouse_handler -> t -> t
   (** Handle mouse events that happens over an ui. *)
 
-  val keyboard_area : ?focus:Focus.status -> (key -> may_handle) -> t -> t
+  val keyboard_area : ?focus:Focus.status -> (key -> (unit Ui_effect.t option *may_handle)) -> t -> t
   (** Define a focus receiver, handle keyboard events over the focused area. Distinct from [event_filter] because [`Focus *] events will move focus between these areas *)
 
   val has_focus : t -> bool
@@ -291,13 +293,13 @@ sig
   val join_z : t -> t -> t
   (** Superpose two images. The right one will be on top. *)
 
-  val pack_x : t Lwd_utils.monoid
+  val pack_x : t *(t->t->t)
   (** Horizontal concatenation monoid *)
 
-  val pack_y : t Lwd_utils.monoid
+  val pack_y : t *(t->t->t)
   (** Vertical concatenation monoid *)
 
-  val pack_z : t Lwd_utils.monoid
+  val pack_z : t *(t->t->t)
   (** Superposition monoid *)
 
   val hcat : t list -> t
@@ -358,7 +360,7 @@ sig
   open Notty_unix
 
   val step : ?process_event:bool -> ?timeout:float -> renderer:Renderer.t ->
-    Term.t -> ui Lwd.root -> unit
+    Term.t -> (ui Bonsai_driver.t) -> unit
   (** Run one step of the main loop.
 
       Update output image describe by the provided [root].
@@ -368,8 +370,8 @@ sig
   val run :
     ?tick_period:float -> ?tick:(unit -> unit) ->
     ?term:Term.t -> ?renderer:Renderer.t ->
-    ?quit:bool Lwd.var -> ?quit_on_escape:bool ->
-    ?quit_on_ctrl_q:bool -> ui Lwd.t -> unit
+    ?quit:bool Bonsai.Expert.Var.t -> ?quit_on_escape:bool ->
+    ?quit_on_ctrl_q:bool -> (Bonsai.graph->ui Bonsai.t) -> unit
   (** Repeatedly run steps of the main loop, until either:
       - [quit] becomes true,
       - the ui computation raises an exception,

@@ -1,10 +1,9 @@
 (executable
  (name hackernews)
  (modes byte exe)
- (ocamlopt_flags
- (-inline 0)
- (-inline-toplevel 0)
- (-Oclassic)
+ (libraries notty notty.unix nottui)
+ (preprocess
+  (pps bonsai.ppx_bonsai ppx_jane  )
+  )
  )
- (libraries notty notty.unix nottui))
 

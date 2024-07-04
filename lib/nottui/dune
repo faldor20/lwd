@@ -4,7 +4,8 @@
  (name nottui)
  (public_name nottui)
  (wrapped true)
- (libraries bonsai notty notty.unix)
+ (libraries bonsai notty notty.unix bonsai.driver)
  (inline_tests)
+ (modules nottui nottui_main)
  (preprocess
   (pps ppx_inline_test ppx_assert bonsai.ppx_bonsai ppx_jane  )))
