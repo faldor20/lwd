@@ -63,6 +63,8 @@ val set : 'a var -> 'a -> unit
 (** Change the variable's content, invalidating all documents depending
     on it. *)
 
+val peek_stable : 'a var -> 'a
+(** Same as `peek` but if it is called during recomputation of the document, it will always return the value as it was at the start of the recomputation. This can be important for ui consistency. *)
 val peek : 'a var -> 'a
 (** Observe the current value of the variable, without any dependency
     tracking. *)

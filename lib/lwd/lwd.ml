@@ -35,7 +35,7 @@ and _ desc =
   | Pair : 'a t_ * 'b t_ -> ('a * 'b) desc
   | App  : ('a -> 'b) t_ * 'a t_ -> 'b desc
   | Join : { child : 'a t_ t_; mutable intermediate : 'a t_ option } -> 'a desc
-  | Var  : { mutable binding : 'a } -> 'a desc
+  | Var  : { mutable binding : 'a; mutable nextVal: 'a option } -> 'a desc
   | Prim : { acquire : 'a t -> 'a;
              release : 'a t -> 'a -> unit } -> 'a desc
   | Fix : { doc : 'a t_; wrt : _ t_ } -> 'a desc
@@ -282,7 +282,7 @@ let unsafe_mutation_logger = ref default_unsafe_mutation_logger
 (**
   @param ~was_delayed: set to true if the function call was put on hold untill the current root had finished being evaluated
 *)
-let do_invalidate ?(post_eval=(fun ~was_delayed:_-> ())) sensitivity (node : 'a t_)  =
+let do_invalidate ?(on_delay=(fun ()->())) ?(post_eval=(fun ~was_delayed:_-> ())) sensitivity (node : 'a t_)  =
   let status = ref Neutral in
   invalidate_node status sensitivity node  ;
   let unsafe =
@@ -292,7 +292,9 @@ let do_invalidate ?(post_eval=(fun ~was_delayed:_-> ())) sensitivity (node : 'a 
       post_eval ~was_delayed:false;
       false
     | Unsafe root ->
+      on_delay();
      (*queue our state change to run at then end of eval because we are currently evaluating and shouldn't change any state right now*)
+      on_delay();
       root:= (fun ()->post_eval ~was_delayed:true)::(!root);
       false
   in
@@ -300,23 +302,29 @@ let do_invalidate ?(post_eval=(fun ~was_delayed:_-> ())) sensitivity (node : 'a 
 
 (* Variables *)
 type 'a var = 'a t_
-let var x = operator (Var {binding = x})
+let var x = operator (Var {binding = x;nextVal=None})
 let get x = inj x
 
 let set (vx:_ var) x : unit =
   match vx with
   | Operator ({desc = Var v; _}) ->
+
     (* set the variable, and invalidate all observers *)
-    do_invalidate ~post_eval:(fun ~was_delayed->
+    do_invalidate ~on_delay:(fun _-> v.nextVal<-Some x;) ~post_eval:(fun ~was_delayed->
     (* TODO this evals twice when everything is okay*)
         v.binding <- x;
+        v.nextVal<- None;
         if was_delayed then
         do_invalidate Strong vx;
     )  Strong vx
   | _ -> assert false
 
-let peek = function
+let peek_stable = function
   | Operator ({desc = Var v; _}) -> v.binding
+  | _ -> assert false
+
+let peek = function
+  | Operator ({desc = Var v; _}) -> v.nextVal |>Option.value ~default: v.binding
   | _ -> assert false
 
 let update f v = set v (f (peek v))
