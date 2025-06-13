@@ -24,6 +24,15 @@
   dune
   seq
   (ocaml
-   (>= "4.03"))
+   (>= "5.2"))
   (qtest :with-test)
   (qcheck :with-test)))
+
+(package
+ (name lwd_picos)
+ (synopsis "Lightweight reactive documents with Picos backend")
+ (allow_empty)
+ (depends
+  lwd
+  (picos (>= "0.6.0"))
+  (picos_std (>= "0.6.0"))))
