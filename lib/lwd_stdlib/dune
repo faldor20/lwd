@@ -1,0 +1,34 @@
+; (library
+;  (name lwd)
+;  (public_name lwd)
+;  (modules lwd lwd_seq lwd_table lwd_infix lwd_utils mutex_config)
+;  (modules_without_implementation mutex)
+;  (libraries seq)
+;  (inline_tests
+;   (backend qtest.lib)
+;   (executable
+;    (flags
+;     (-w -33))))
+;  (wrapped false)
+;  (preprocess
+;   (per_module
+;    ((action
+;      (run %{dep:pp.exe} %{input-file}))
+;     lwd_infix
+;     lwd_seq))))
+
+;; Optional Picos backend - only compiled if picos is available
+(library
+ ; (package lwd)
+
+ (name lwd_stdlib)
+ (public_name lwd_stdlib)
+ (libraries lwd )
+ 
+ (implements lwd)
+ 
+ )
+
+; (executable
+;  (name pp)
+;  (modules pp))

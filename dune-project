@@ -20,10 +20,27 @@
  (name lwd)
  (synopsis "Lightweight reactive documents")
  (documentation "https://let-def.github.io/lwd/doc")
+ 
  (depends
   dune
   seq
   (ocaml
-   (>= "4.03"))
+   (>= "5.2"))
   (qtest :with-test)
   (qcheck :with-test)))
+
+(package
+ (name lwd_picos)
+ (synopsis "Lightweight reactive documents with Picos backend")
+ (allow_empty)
+ (depends
+  lwd
+  (picos (>= "0.6.0"))
+  (picos_std (>= "0.6.0"))))
+(package
+ (name lwd_stdlib)
+ (synopsis "Lightweight reactive documents with Stdlib backend")
+ (allow_empty)
+ (depends
+  lwd
+  ))
